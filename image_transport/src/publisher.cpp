@@ -34,9 +34,11 @@
 
 #include "image_transport/publisher.h"
 #include "image_transport/publisher_plugin.h"
-#include <pluginlib/class_loader.h>
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string/erase.hpp>
+
+#include "image_transport/raw_publisher.h"
+#include <x264_image_transport/x264_publisher.h>
 
 namespace image_transport {
 
@@ -90,7 +92,6 @@ struct Publisher::Impl
   }
   
   std::string base_topic_;
-  PubLoaderPtr loader_;
   std::vector<boost::shared_ptr<PublisherPlugin> > publishers_;
   bool unadvertised_;
   //double constructed_;
@@ -100,27 +101,22 @@ struct Publisher::Impl
 Publisher::Publisher(ros::NodeHandle& nh, const std::string& base_topic, uint32_t queue_size,
                      const SubscriberStatusCallback& connect_cb,
                      const SubscriberStatusCallback& disconnect_cb,
-                     const ros::VoidPtr& tracked_object, bool latch,
-                     const PubLoaderPtr& loader)
+                     const ros::VoidPtr& tracked_object, bool latch)
   : impl_(new Impl)
 {
   // Resolve the name explicitly because otherwise the compressed topics don't remap
   // properly (#3652).
   impl_->base_topic_ = nh.resolveName(base_topic);
-  impl_->loader_ = loader;
   
-  BOOST_FOREACH(const std::string& lookup_name, loader->getDeclaredClasses()) {
-    try {
-      boost::shared_ptr<PublisherPlugin> pub = loader->createInstance(lookup_name);
-      impl_->publishers_.push_back(pub);
-      pub->advertise(nh, impl_->base_topic_, queue_size, rebindCB(connect_cb),
+  boost::shared_ptr<PublisherPlugin> pub(new x264_image_transport::x264Publisher());
+  impl_->publishers_.push_back(pub);
+  pub->advertise(nh, impl_->base_topic_, queue_size, rebindCB(connect_cb),
                      rebindCB(disconnect_cb), tracked_object, latch);
-    }
-    catch (const std::runtime_error& e) {
-      ROS_DEBUG("Failed to load plugin %s, error string: %s",
-                lookup_name.c_str(), e.what());
-    }
-  }
+        
+  pub.reset(new image_transport::RawPublisher());
+  impl_->publishers_.push_back(pub);
+  pub->advertise(nh, impl_->base_topic_, queue_size, rebindCB(connect_cb),
+                     rebindCB(disconnect_cb), tracked_object, latch);
 
   if (impl_->publishers_.empty())
     throw Exception("No plugins found! Does `rospack plugins --attrib=plugin "

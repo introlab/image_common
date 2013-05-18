@@ -35,8 +35,12 @@
 #include "image_transport/subscriber.h"
 #include "image_transport/subscriber_plugin.h"
 #include <ros/names.h>
-#include <pluginlib/class_loader.h>
 #include <boost/scoped_ptr.hpp>
+#include <boost/make_shared.hpp>
+
+#include "image_transport/image_transport.h"
+#include "image_transport/raw_subscriber.h"
+#include <x264_image_transport/x264_subscriber.h>
 
 namespace image_transport {
 
@@ -66,7 +70,6 @@ struct Subscriber::Impl
     }
   }
   
-  SubLoaderPtr loader_;
   boost::shared_ptr<SubscriberPlugin> subscriber_;
   bool unsubscribed_;
   //double constructed_;
@@ -74,20 +77,20 @@ struct Subscriber::Impl
 
 Subscriber::Subscriber(ros::NodeHandle& nh, const std::string& base_topic, uint32_t queue_size,
                        const boost::function<void(const sensor_msgs::ImageConstPtr&)>& callback,
-                       const ros::VoidPtr& tracked_object, const TransportHints& transport_hints,
-                       const SubLoaderPtr& loader)
+                       const ros::VoidPtr& tracked_object, const TransportHints& transport_hints)
   : impl_(new Impl)
 {
   // Load the plugin for the chosen transport.
   std::string lookup_name = SubscriberPlugin::getLookupName(transport_hints.getTransport());
-  try {
-    impl_->subscriber_ = loader->createInstance(lookup_name);
+    
+  if(lookup_name.find(std::string("x264"))!=std::string::npos)
+  {
+    impl_->subscriber_.reset(new x264_image_transport::x264Subscriber());
   }
-  catch (pluginlib::PluginlibException& e) {
-    throw TransportLoadException(transport_hints.getTransport(), e.what());
+  else
+  {
+    impl_->subscriber_.reset(new image_transport::RawSubscriber());
   }
-  // Hang on to the class loader so our shared library doesn't disappear from under us.
-  impl_->loader_ = loader;
 
   // Try to catch if user passed in a transport-specific topic as base_topic.
   std::string clean_topic = ros::names::clean(base_topic);
@@ -95,7 +98,7 @@ Subscriber::Subscriber(ros::NodeHandle& nh, const std::string& base_topic, uint3
   if (found != std::string::npos) {
     std::string transport = clean_topic.substr(found+1);
     std::string plugin_name = SubscriberPlugin::getLookupName(transport);
-    std::vector<std::string> plugins = loader->getDeclaredClasses();
+      std::vector<std::string> plugins = ImageTransport::getDeclaredTransports();
     if (std::find(plugins.begin(), plugins.end(), plugin_name) != plugins.end()) {
       std::string real_base_topic = clean_topic.substr(0, found);
       ROS_WARN("[image_transport] It looks like you are trying to subscribe directly to a "

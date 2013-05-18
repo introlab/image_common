@@ -39,7 +39,6 @@
 #include <sensor_msgs/Image.h>
 #include "image_transport/single_subscriber_publisher.h"
 #include "image_transport/exception.h"
-#include "image_transport/loader_fwds.h"
 
 namespace image_transport {
 
@@ -102,8 +101,7 @@ private:
   Publisher(ros::NodeHandle& nh, const std::string& base_topic, uint32_t queue_size,
             const SubscriberStatusCallback& connect_cb,
             const SubscriberStatusCallback& disconnect_cb,
-            const ros::VoidPtr& tracked_object, bool latch,
-            const PubLoaderPtr& loader);
+            const ros::VoidPtr& tracked_object, bool latch);
 
   struct Impl;
   typedef boost::shared_ptr<Impl> ImplPtr;
